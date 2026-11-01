@@ -4,7 +4,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { GitBranch, Database, Send, Zap, Settings2 } from "lucide-react";
 
 const icons = { trigger: Zap, logic: GitBranch, action: Send, data: Database, utility: Settings2 };
-export type WorkflowNodeData = { label: string; description: string; category: keyof typeof icons; color: string; sourceLabels?: string[] };
+export type WorkflowNodeData = { kind: string; label: string; description: string; notes?: string; category: keyof typeof icons; color: string; config: Record<string, string>; sourceLabels?: string[] };
 
 export function WorkflowNode({ data, selected }: NodeProps & { data: WorkflowNodeData }) {
   const Icon = icons[data.category];

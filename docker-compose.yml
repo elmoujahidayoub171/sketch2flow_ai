@@ -3,7 +3,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: sketch2flow-frontend:v1.2
+    image: sketch2flow-frontend:v1.4
     container_name: sketch2flow-frontend
     ports:
       - "3000:3000"
