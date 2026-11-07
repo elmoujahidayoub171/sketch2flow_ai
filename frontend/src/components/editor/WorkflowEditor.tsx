@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { addEdge, Background, BackgroundVariant, ConnectionLineType, Controls, MiniMap, ReactFlow, reconnectEdge, useEdgesState, useNodesState, type Connection, type Edge, type Node, type ReactFlowInstance } from "@xyflow/react";
-import { AlertTriangle, ArrowLeft, ChevronDown, Download, FileJson, FileUp, HelpCircle, Keyboard, LayoutTemplate, Maximize, Moon, PanelLeft, Redo2, Save, Settings, Settings2, SlidersHorizontal, Sun, Undo2, Workflow, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ChevronDown, Download, FileJson, FileUp, HelpCircle, Keyboard, LayoutTemplate, Maximize, Moon, PanelLeft, Redo2, Save, Settings, Settings2, SlidersHorizontal, Sparkles, Sun, Undo2, Workflow, X } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import { NodePalette, paletteNodes, type PaletteNode } from "./NodePalette";
-import { PropertiesPanel } from "./PropertiesPanel";
+import { EditorSidebar, type EditorTab } from "./EditorSidebar";
 import { WorkflowNode, type WorkflowNodeData } from "./WorkflowNode";
 import { defaultNodeConfig } from "@/features/workflows/graph-schema";
 import { downloadWorkflow, readWorkflow } from "@/features/workflows/import-export";
 import { useWorkflowStore, type WorkflowDocument } from "@/features/workflows/workflow-store";
 import { useThemeStore } from "@/features/theme/theme-store";
+import type { ConfigUpdate } from "@/features/agent/types";
 
 const initialNodes: Node<WorkflowNodeData>[] = [
   { id: "manual-1", type: "workflow", position: { x: 160, y: 190 }, data: { kind: "trigger.manual", label: "Manual Trigger", description: "Start on demand", category: "trigger", color: "emerald", config: {} } },
@@ -55,7 +56,7 @@ const shortcuts = [
   ["?", "Show this dialog"],
 ];
 
-export function WorkflowEditor({ workflowId = "new" }: { workflowId?: string }) {
+export function WorkflowEditor({ workflowId = "new", initialTab = "inspector" }: { workflowId?: string; initialTab?: EditorTab }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string>();
@@ -79,6 +80,7 @@ export function WorkflowEditor({ workflowId = "new" }: { workflowId?: string }) 
   const [draggingNode, setDraggingNode] = useState<PaletteNode>();
   const [dropActive, setDropActive] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
+  const [rightTab, setRightTab] = useState<EditorTab>(initialTab);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const selectedBatch = useRef<Clipboard | undefined>(undefined);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -168,8 +170,35 @@ export function WorkflowEditor({ workflowId = "new" }: { workflowId?: string }) 
     setSelectedEdgeId(undefined);
     setContextMenu(undefined);
     setFocusNameSignal((current) => current + 1);
+    setRightTab("inspector");
     setMobilePanel("inspector");
   }, []);
+
+  const openReview = useCallback(() => {
+    setRightTab("review");
+    setMobilePanel("inspector");
+  }, []);
+
+  const focusNode = useCallback((id: string) => {
+    const node = nodes.find((item) => item.id === id);
+    setSelectedId(id);
+    setSelectedEdgeId(undefined);
+    setMobilePanel("inspector");
+    if (node && flowInstance) {
+      const width = node.measured?.width ?? 190;
+      const height = node.measured?.height ?? 120;
+      flowInstance.setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: Math.max(flowInstance.getZoom(), 0.9), duration: 320 });
+    }
+  }, [flowInstance, nodes]);
+
+  const applyAnswerUpdates = useCallback((updates: ConfigUpdate[]) => {
+    if (!updates.length) return;
+    pushHistory();
+    setNodes((current) => current.map((node) => {
+      const update = updates.find((item) => item.nodeId === node.id);
+      return update ? { ...node, data: { ...node.data, config: { ...node.data.config, ...update.config } } } : node;
+    }));
+  }, [pushHistory, setNodes]);
 
   const updateNode = useCallback((id: string, data: Partial<WorkflowNodeData>) => {
     pushHistory();
@@ -467,6 +496,7 @@ export function WorkflowEditor({ workflowId = "new" }: { workflowId?: string }) 
         <div className="toolbar-actions">
           <button className="icon-button mobile-only" onClick={() => setMobilePanel((current) => current === "palette" ? undefined : "palette")} aria-label="Toggle node library"><PanelLeft size={16} /></button>
           <input ref={fileInput} className="hidden-file-input" type="file" accept="application/json,.json" onChange={onImport} aria-label="Import workflow JSON" />
+          <button className={`toolbar-button ai-toolbar-button ${rightTab === "review" ? "is-active" : ""}`} onClick={openReview} title="AI readiness review" aria-label="Open AI review"><Sparkles size={16} /></button>
           <button className="toolbar-button subtle" onClick={saveNow} title="Save (Ctrl/Cmd+S)"><Save size={16} />Save</button>
           <button className="toolbar-button subtle" onClick={() => fileInput.current?.click()} title="Import JSON"><FileUp size={16} />Import</button>
           <div className="toolbar-menu-wrap">
@@ -555,7 +585,7 @@ export function WorkflowEditor({ workflowId = "new" }: { workflowId?: string }) 
                 {contextNode ? (
                   <>
                     <button onClick={() => renameFromMenu(contextNode.id)}>Rename</button>
-                    <button onClick={() => { setSelectedId(contextNode.id); setContextMenu(undefined); setMobilePanel("inspector"); }}>Edit</button>
+                    <button onClick={() => { setSelectedId(contextNode.id); setContextMenu(undefined); setRightTab("inspector"); setMobilePanel("inspector"); }}>Edit</button>
                     <button onClick={() => duplicateNode(contextNode.id)}>Duplicate</button>
                     <button onClick={() => bringToFront(contextNode.id)}>Bring to Front</button>
                     <button onClick={() => { copySelection([contextNode.id]); setContextMenu(undefined); }}>Copy</button>
@@ -569,7 +599,7 @@ export function WorkflowEditor({ workflowId = "new" }: { workflowId?: string }) 
             <div className="canvas-hint">{dropActive && draggingNode ? <><FileUp size={14} />Drop {draggingNode.label} to add it</> : <><LayoutTemplate size={14} /> Shift-drag to select multiple nodes</>}</div>
           </div>
         </section>
-        <PropertiesPanel focusNameSignal={focusNameSignal} selectedNode={selectedNode} selectedEdge={selectedEdge} onUpdate={updateNode} onUpdateEdge={updateEdge} onDelete={(id) => removeNodes([id])} onDeleteEdge={(id) => removeEdges([id])} onClose={() => { setSelectedId(undefined); setSelectedEdgeId(undefined); setMobilePanel(undefined); }} />
+        <EditorSidebar tab={rightTab} onTabChange={setRightTab} nodes={nodes} edges={edges} hasCycle={hasCycle} workflowName={workflowName} selectedNode={selectedNode} selectedEdge={selectedEdge} focusNameSignal={focusNameSignal} onUpdateNode={updateNode} onUpdateEdge={updateEdge} onDeleteNode={(id) => removeNodes([id])} onDeleteEdge={(id) => removeEdges([id])} onClose={() => { setSelectedId(undefined); setSelectedEdgeId(undefined); setMobilePanel(undefined); }} onFocusNode={focusNode} getWorkflowDocument={documentForSave} onApplyAnswers={applyAnswerUpdates} onNotify={showNotice} />
       </div>
 
       {mobilePanel && <button className="mobile-scrim" onClick={() => setMobilePanel(undefined)} aria-label="Close panel" />}

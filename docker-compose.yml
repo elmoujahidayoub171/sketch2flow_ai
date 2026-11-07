@@ -1,8 +1,25 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: sketch2flow-api:v1
+    container_name: sketch2flow-api
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEY: ${API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gemini-3.1-flash-lite}
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-}
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     image: sketch2flow-frontend:v1.4
     container_name: sketch2flow-frontend
     ports:
@@ -10,4 +27,6 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      - api
     restart: unless-stopped
